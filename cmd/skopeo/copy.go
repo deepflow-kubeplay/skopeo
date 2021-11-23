@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"strings"
 
+	commonFlag "github.com/containers/common/pkg/flag"
 	"github.com/containers/common/pkg/retry"
 	"github.com/containers/image/v5/copy"
 	"github.com/containers/image/v5/docker/reference"
@@ -24,16 +25,16 @@ type copyOptions struct {
 	srcImage            *imageOptions
 	destImage           *imageDestOptions
 	retryOpts           *retry.RetryOptions
-	additionalTags      []string       // For docker-archive: destinations, in addition to the name:tag specified as destination, also add these
-	removeSignatures    bool           // Do not copy signatures from the source image
-	signByFingerprint   string         // Sign the image using a GPG key with the specified fingerprint
-	digestFile          string         // Write digest to this file
-	format              optionalString // Force conversion of the image to a specified format
-	quiet               bool           // Suppress output information when copying images
-	all                 bool           // Copy all of the images if the source is a list
-	encryptLayer        []int          // The list of layers to encrypt
-	encryptionKeys      []string       // Keys needed to encrypt the image
-	decryptionKeys      []string       // Keys needed to decrypt the image
+	additionalTags      []string                  // For docker-archive: destinations, in addition to the name:tag specified as destination, also add these
+	removeSignatures    bool                      // Do not copy signatures from the source image
+	signByFingerprint   string                    // Sign the image using a GPG key with the specified fingerprint
+	digestFile          string                    // Write digest to this file
+	format              commonFlag.OptionalString // Force conversion of the image to a specified format
+	quiet               bool                      // Suppress output information when copying images
+	all                 bool                      // Copy all of the images if the source is a list
+	encryptLayer        []int                     // The list of layers to encrypt
+	encryptionKeys      []string                  // Keys needed to encrypt the image
+	decryptionKeys      []string                  // Keys needed to decrypt the image
 }
 
 func copyCmd(global *globalOptions) *cobra.Command {
@@ -74,7 +75,7 @@ See skopeo(1) section "IMAGE NAMES" for the expected format
 	flags.BoolVar(&opts.removeSignatures, "remove-signatures", false, "Do not copy signatures from SOURCE-IMAGE")
 	flags.StringVar(&opts.signByFingerprint, "sign-by", "", "Sign the image using a GPG key with the specified `FINGERPRINT`")
 	flags.StringVar(&opts.digestFile, "digestfile", "", "Write the digest of the pushed image to the specified file")
-	flags.VarP(newOptionalStringValue(&opts.format), "format", "f", `MANIFEST TYPE (oci, v2s1, or v2s2) to use in the destination (default is manifest type of source, with fallbacks)`)
+	flags.VarP(commonFlag.NewOptionalStringValue(&opts.format), "format", "f", `MANIFEST TYPE (oci, v2s1, or v2s2) to use in the destination (default is manifest type of source, with fallbacks)`)
 	flags.StringSliceVar(&opts.encryptionKeys, "encryption-key", []string{}, "*Experimental* key with the encryption protocol to use needed to encrypt the image (e.g. jwe:/path/to/key.pem)")
 	flags.IntSliceVar(&opts.encryptLayer, "encrypt-layer", []int{}, "*Experimental* the 0-indexed layer indices, with support for negative indexing (e.g. 0 is the first layer, -1 is the last layer)")
 	flags.StringSliceVar(&opts.decryptionKeys, "decryption-key", []string{}, "*Experimental* key needed to decrypt the image")
@@ -117,8 +118,8 @@ func (opts *copyOptions) run(args []string, stdout io.Writer) error {
 	}
 
 	var manifestType string
-	if opts.format.present {
-		manifestType, err = parseManifestFormat(opts.format.value)
+	if opts.format.Present() {
+		manifestType, err = parseManifestFormat(opts.format.Value())
 		if err != nil {
 			return err
 		}

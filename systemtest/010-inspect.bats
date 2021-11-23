@@ -108,4 +108,15 @@ END_EXPECT
                   "os - variant - architecture of $img"
 }
 
+@test "inspect: don't list tags" {
+    remote_image=docker://quay.io/fedora/fedora
+    # use --no-tags to not list any tags
+    run_skopeo inspect --no-tags $remote_image
+    inspect_output=$output
+    # extract the content of "RepoTags" property from the JSON output
+    repo_tags=$(jq '.RepoTags[]' <<<"$inspect_output")
+    # verify that the RepoTags was empty
+    expect_output --from="$repo_tags" "" "inspect --no-tags was expected to return empty RepoTags[]"
+}
+
 # vim: filetype=sh

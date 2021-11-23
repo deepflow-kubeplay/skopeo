@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/containers/common/pkg/auth"
+	commonFlag "github.com/containers/common/pkg/flag"
 	"github.com/containers/image/v5/types"
 	"github.com/spf13/cobra"
 )
@@ -12,7 +13,7 @@ import (
 type loginOptions struct {
 	global    *globalOptions
 	loginOpts auth.LoginOptions
-	tlsVerify optionalBool
+	tlsVerify commonFlag.OptionalBool
 }
 
 func loginCmd(global *globalOptions) *cobra.Command {
@@ -28,7 +29,7 @@ func loginCmd(global *globalOptions) *cobra.Command {
 	}
 	adjustUsage(cmd)
 	flags := cmd.Flags()
-	optionalBoolFlag(flags, &opts.tlsVerify, "tls-verify", "require HTTPS and verify certificates when accessing the registry")
+	commonFlag.OptionalBoolFlag(flags, &opts.tlsVerify, "tls-verify", "require HTTPS and verify certificates when accessing the registry")
 	flags.AddFlagSet(auth.GetLoginFlags(&opts.loginOpts))
 	return cmd
 }
@@ -40,8 +41,8 @@ func (opts *loginOptions) run(args []string, stdout io.Writer) error {
 	opts.loginOpts.Stdin = os.Stdin
 	opts.loginOpts.AcceptRepositories = true
 	sys := opts.global.newSystemContext()
-	if opts.tlsVerify.present {
-		sys.DockerInsecureSkipTLSVerify = types.NewOptionalBool(!opts.tlsVerify.value)
+	if opts.tlsVerify.Present() {
+		sys.DockerInsecureSkipTLSVerify = types.NewOptionalBool(!opts.tlsVerify.Value())
 	}
 	return auth.Login(ctx, sys, &opts.loginOpts, args)
 }

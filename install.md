@@ -1,4 +1,4 @@
-# Installing from packages
+# Installing Skopeo
 
 ## Distribution Packages
 `skopeo` may already be packaged in your distribution.
@@ -12,29 +12,6 @@ sudo dnf -y install skopeo
 ### RHEL/CentOS ≥ 8 and CentOS Stream
 
 ```sh
-sudo dnf -y install skopeo
-```
-
-Newer Skopeo releases may be available on the repositories provided by the
-Kubic project. Beware, these may not be suitable for production environments.
-
-on CentOS 8:
-
-```sh
-sudo dnf -y module disable container-tools
-sudo dnf -y install 'dnf-command(copr)'
-sudo dnf -y copr enable rhcontainerbot/container-selinux
-sudo curl -L -o /etc/yum.repos.d/devel:kubic:libcontainers:stable.repo https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/CentOS_8/devel:kubic:libcontainers:stable.repo
-sudo dnf -y install skopeo
-```
-
-on CentOS 8 Stream:
-
-```sh
-sudo dnf -y module disable container-tools
-sudo dnf -y install 'dnf-command(copr)'
-sudo dnf -y copr enable rhcontainerbot/container-selinux
-sudo curl -L -o /etc/yum.repos.d/devel:kubic:libcontainers:stable.repo https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/CentOS_8_Stream/devel:kubic:libcontainers:stable.repo
 sudo dnf -y install skopeo
 ```
 
@@ -69,12 +46,11 @@ $ nix-env -i skopeo
 
 ### Debian
 
-The skopeo package is available in
-the [Bullseye (testing) branch](https://packages.debian.org/bullseye/skopeo), which
-will be the next stable release (Debian 11) as well as Debian Unstable/Sid.
+The skopeo package is available on [Bullseye](https://packages.debian.org/bullseye/skopeo),
+and Debian Testing and Unstable.
 
 ```bash
-# Debian Testing/Bullseye or Unstable/Sid
+# Debian Bullseye, Testing or Unstable/Sid
 sudo apt-get update
 sudo apt-get -y install skopeo
 ```
@@ -97,17 +73,8 @@ sudo apt-get -y update
 sudo apt-get -y install skopeo
 ```
 
-If you would prefer newer (though not as well-tested) packages,
-the [Kubic project](https://build.opensuse.org/package/show/devel:kubic:libcontainers:stable/skopeo)
-provides packages for active Ubuntu releases 20.04 and newer (it should also work with direct derivatives like Pop!\_OS).
-Checkout the [Kubic project page](https://build.opensuse.org/package/show/devel:kubic:libcontainers:stable/skopeo)
-for a list of supported Ubuntu version and
-architecture combinations. **NOTE:** The command `sudo apt-get -y upgrade`
-maybe required in some cases if Skopeo cannot be installed without it.
-The build sources for the Kubic packages can be found [here](https://gitlab.com/rhcontainerbot/skopeo/-/tree/debian/debian).
-
-CAUTION: On Ubuntu 20.10 and newer, we highly recommend you use Buildah, Podman and Skopeo ONLY from EITHER the Kubic repo
-OR the official Ubuntu repos. Mixing and matching may lead to unpredictable situations including installation conflicts.
+The [Kubic project](https://build.opensuse.org/package/show/devel:kubic:libcontainers:stable/skopeo)
+provides packages for Ubuntu 20.04 (it should also work with direct derivatives like Pop!\_OS).
 
 ```bash
 . /etc/os-release
@@ -118,6 +85,25 @@ sudo apt-get -y upgrade
 sudo apt-get -y install skopeo
 ```
 
+### Windows
+Skopeo has not yet been packaged for Windows. There is an [open feature
+request](https://github.com/containers/skopeo/issues/715) and contributions are
+always welcome.
+
+
+## Container Images
+
+Skopeo container images are available at `quay.io/skopeo/stable:latest`.
+For example,
+
+```bash
+podman run docker://quay.io/skopeo/stable:latest copy --help
+```
+
+[Read more](./contrib/skopeoimage/README.md).
+
+
+## Building from Source
 
 Otherwise, read on for building and installing it from source:
 
@@ -125,8 +111,6 @@ To build the `skopeo` binary you need at least Go 1.12.
 
 There are two ways to build skopeo: in a container, or locally without a
 container. Choose the one which better matches your needs and environment.
-
-## Building from Source
 
 ### Building without a container
 
@@ -167,6 +151,12 @@ cd $GOPATH/src/github.com/containers/skopeo && make bin/skopeo
 ```
 
 By default the `make` command (make all) will build bin/skopeo and the documentation locally.
+
+Building of documentation requires `go-md2man`. On systems that do not have this tool, the
+document generation can be skipped by passing `DISABLE_DOCS=1`:
+```
+DISABLE_DOCS=1 make
+```
 
 ### Building documentation
 
@@ -213,3 +203,41 @@ Finally, after the binary and documentation is built:
 ```bash
 sudo make install
 ```
+
+### Building a static binary
+
+There have been efforts in the past to produce and maintain static builds, but the maintainers prefer to run Skopeo using distro packages or within containers. This is because static builds of Skopeo tend to be unreliable and functionally restricted. Specifically:
+- Some features of Skopeo depend on non-Go libraries like `libgpgme` and `libdevmapper`.
+- Generating static Go binaries uses native Go libraries, which don't support e.g. `.local` or LDAP-based name resolution.
+
+That being said, if you would like to build Skopeo statically, you might be able to do it by combining all the following steps.
+- Export environment variable `CGO_ENABLED=0` (disabling CGO causes Go to prefer native libraries when possible, instead of dynamically linking against system libraries).
+- Set the `BUILDTAGS=containers_image_openpgp` Make variable (this remove the dependency on `libgpgme` and its companion libraries).
+- Clear the `GO_DYN_FLAGS` Make variable (which otherwise seems to force the creation of a dynamic executable).
+
+The following command implements these steps to produce a static binary in the `bin` subdirectory of the repository:
+
+```bash
+docker run -v $PWD:/src -w /src -e CGO_ENABLED=0 golang \
+make BUILDTAGS=containers_image_openpgp GO_DYN_FLAGS=
+```
+
+Keep in mind that the resulting binary is unsupported and might crash randomly. Only use if you know what you're doing!
+
+For more information, history, and context about static builds, check the following issues:
+
+- [#391] - Consider distributing statically built binaries as part of release
+- [#669] - Static build fails with segmentation violation
+- [#670] - Fixing static binary build using container
+- [#755] - Remove static and in-container targets from Makefile
+- [#932] - Add nix derivation for static builds
+- [#1336] - Unable to run skopeo on Fedora 30 (due to dyn lib dependency)
+- [#1478] - Publish binary releases to GitHub (request+discussion)
+
+[#391]: https://github.com/containers/skopeo/issues/391
+[#669]: https://github.com/containers/skopeo/issues/669
+[#670]: https://github.com/containers/skopeo/issues/670
+[#755]: https://github.com/containers/skopeo/issues/755
+[#932]: https://github.com/containers/skopeo/issues/932
+[#1336]: https://github.com/containers/skopeo/issues/1336
+[#1478]: https://github.com/containers/skopeo/issues/1478

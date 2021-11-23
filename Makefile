@@ -119,7 +119,6 @@ help:
 	@echo
 	@echo " * 'install' - Install binaries and documents to system locations"
 	@echo " * 'binary' - Build skopeo with a container"
-	@echo " * 'static' - Build statically linked binary"
 	@echo " * 'bin/skopeo' - Build skopeo locally"
 	@echo " * 'test-unit' - Execute unit tests"
 	@echo " * 'test-integration' - Execute integration tests"
@@ -132,22 +131,6 @@ help:
 binary: cmd/skopeo
 	$(CONTAINER_RUN) make bin/skopeo $(if $(DEBUG),DEBUG=$(DEBUG)) BUILDTAGS='$(BUILDTAGS)'
 
-# Update nix/nixpkgs.json its latest stable commit
-.PHONY: nixpkgs
-nixpkgs:
-	@nix run \
-		-f channel:nixos-21.05 nix-prefetch-git \
-		-c nix-prefetch-git \
-		--no-deepClone \
-		https://github.com/nixos/nixpkgs refs/heads/nixos-21.05 > nix/nixpkgs.json
-
-# Build statically linked binary
-.PHONY: static
-static:
-	@nix build -f nix/
-	mkdir -p ./bin
-	cp -rfp ./result/bin/* ./bin/
-
 # Build w/o using containers
 .PHONY: bin/skopeo
 bin/skopeo:
@@ -157,7 +140,9 @@ bin/skopeo.%:
 local-cross: bin/skopeo.darwin.amd64 bin/skopeo.linux.arm bin/skopeo.linux.arm64 bin/skopeo.windows.386.exe bin/skopeo.windows.amd64.exe
 
 $(MANPAGES): %: %.md
+ifneq ($(DISABLE_DOCS), 1)
 	sed -e 's/\((skopeo.*\.md)\)//' -e 's/\[\(skopeo.*\)\]/\1/' $<  | $(GOMD2MAN) -in /dev/stdin -out $@
+endif
 
 docs: $(MANPAGES)
 
@@ -179,8 +164,10 @@ install-binary: bin/skopeo
 	install -m 755 bin/skopeo ${DESTDIR}${BINDIR}/skopeo
 
 install-docs: docs
+ifneq ($(DISABLE_DOCS), 1)
 	install -d -m 755 ${DESTDIR}${MANDIR}/man1
 	install -m 644 docs/*.1 ${DESTDIR}${MANDIR}/man1
+endif
 
 install-completions:
 	install -m 755 -d ${DESTDIR}${BASHCOMPLETIONSDIR}

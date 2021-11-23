@@ -120,7 +120,7 @@ Access the registry anonymously.
 
 **--src-tls-verify** _bool-value_
 
-Require HTTPS and verify certificates when talking to container source registry or daemon (defaults to true).
+Require HTTPS and verify certificates when talking to container source registry or daemon. Default to source registry setting.
 
 **--dest-cert-dir** _path_
 
@@ -132,7 +132,7 @@ Access the registry anonymously.
 
 **--dest-tls-verify** _bool-value_
 
-Require HTTPS and verify certificates when talking to container destination registry or daemon (defaults to true).
+Require HTTPS and verify certificates when talking to container destination registry or daemon. Default to destination registry setting.
 
 **--src-daemon-host** _host_
 
@@ -160,9 +160,29 @@ Bearer token for accessing the source registry.
 
 Bearer token for accessing the destination registry.
 
+**--dest-precompute-digests** _bool-value_
+
+Precompute digests to ensure layers are not uploaded that already exist on the destination registry. Layers with initially unknown digests (ex. compressing "on the fly") will be temporarily streamed to disk.
+
 **--retry-times**
 
 The number of times to retry. Retry wait time will be exponentially increased based on the number of failed attempts.
+
+**--src-username**
+
+The username to access the source registry.
+
+**--src-password**
+
+The password to access the source registry.
+
+**--dest-username**
+
+The username to access the destination registry.
+
+**--dest-password**
+
+The password to access the destination registry.
 
 ## EXAMPLES
 

@@ -58,10 +58,6 @@ _run_setup() {
         return
     fi
 
-    # This is required as part of the standard Fedora GCE VM setup
-    growpart /dev/sda 1
-    resize2fs /dev/sda1
-
     # VM's come with the distro. skopeo package pre-installed
     dnf erase -y skopeo
 

@@ -24,12 +24,13 @@ import (
 )
 
 type inspectOptions struct {
-	global    *globalOptions
-	image     *imageOptions
-	retryOpts *retry.RetryOptions
-	format    string
-	raw       bool // Output the raw manifest instead of parsing information about the image
-	config    bool // Output the raw config blob instead of parsing information about the image
+	global        *globalOptions
+	image         *imageOptions
+	retryOpts     *retry.RetryOptions
+	format        string
+	raw           bool // Output the raw manifest instead of parsing information about the image
+	config        bool // Output the raw config blob instead of parsing information about the image
+	doNotListTags bool // Do not list all tags available in the same repository
 }
 
 func inspectCmd(global *globalOptions) *cobra.Command {
@@ -60,6 +61,7 @@ See skopeo(1) section "IMAGE NAMES" for the expected format
 	flags.BoolVar(&opts.raw, "raw", false, "output raw manifest or configuration")
 	flags.BoolVar(&opts.config, "config", false, "output configuration")
 	flags.StringVarP(&opts.format, "format", "f", "", "Format the output to a Go template")
+	flags.BoolVarP(&opts.doNotListTags, "no-tags", "n", false, "Do not list the available tags from the repository in the output")
 	flags.AddFlagSet(&sharedFlags)
 	flags.AddFlagSet(&imageFlags)
 	flags.AddFlagSet(&retryFlags)
@@ -192,7 +194,7 @@ func (opts *inspectOptions) run(args []string, stdout io.Writer) (retErr error) 
 	if dockerRef := img.Reference().DockerReference(); dockerRef != nil {
 		outputData.Name = dockerRef.Name()
 	}
-	if img.Reference().Transport() == docker.Transport {
+	if !opts.doNotListTags && img.Reference().Transport() == docker.Transport {
 		sys, err := opts.image.newSystemContext()
 		if err != nil {
 			return err

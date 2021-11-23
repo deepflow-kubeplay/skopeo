@@ -41,7 +41,15 @@ The number of times to retry. Retry wait time will be exponentially increased ba
 
 **--tls-verify**=_bool_
 
-Require HTTPS and verify certificates when talking to the container registry or daemon (defaults to true)
+Require HTTPS and verify certificates when talking to the container registry or daemon. Default to registry.conf setting.
+
+**--username**
+
+The username to access the registry.
+
+**--password**
+
+The password to access the registry.
 
 ## REPOSITORY NAMES
 

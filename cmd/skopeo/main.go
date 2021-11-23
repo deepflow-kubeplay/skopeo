@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
+	commonFlag "github.com/containers/common/pkg/flag"
 	"github.com/containers/image/v5/signature"
 	"github.com/containers/image/v5/types"
 	"github.com/containers/skopeo/version"
@@ -20,17 +22,32 @@ var gitCommit = ""
 var defaultUserAgent = "skopeo/" + version.Version
 
 type globalOptions struct {
-	debug              bool          // Enable debug output
-	tlsVerify          optionalBool  // Require HTTPS and verify certificates (for docker: and docker-daemon:)
-	policyPath         string        // Path to a signature verification policy file
-	insecurePolicy     bool          // Use an "allow everything" signature verification policy
-	registriesDirPath  string        // Path to a "registries.d" registry configuration directory
-	overrideArch       string        // Architecture to use for choosing images, instead of the runtime one
-	overrideOS         string        // OS to use for choosing images, instead of the runtime one
-	overrideVariant    string        // Architecture variant to use for choosing images, instead of the runtime one
-	commandTimeout     time.Duration // Timeout for the command execution
-	registriesConfPath string        // Path to the "registries.conf" file
-	tmpDir             string        // Path to use for big temporary files
+	debug              bool                    // Enable debug output
+	tlsVerify          commonFlag.OptionalBool // Require HTTPS and verify certificates (for docker: and docker-daemon:)
+	policyPath         string                  // Path to a signature verification policy file
+	insecurePolicy     bool                    // Use an "allow everything" signature verification policy
+	registriesDirPath  string                  // Path to a "registries.d" registry configuration directory
+	overrideArch       string                  // Architecture to use for choosing images, instead of the runtime one
+	overrideOS         string                  // OS to use for choosing images, instead of the runtime one
+	overrideVariant    string                  // Architecture variant to use for choosing images, instead of the runtime one
+	commandTimeout     time.Duration           // Timeout for the command execution
+	registriesConfPath string                  // Path to the "registries.conf" file
+	tmpDir             string                  // Path to use for big temporary files
+}
+
+// requireSubcommand returns an error if no sub command is provided
+// This was copied from podman: `github.com/containers/podman/cmd/podman/validate/args.go
+// Some small style changes to match skopeo were applied, but try to apply any
+// bugfixes there first.
+func requireSubcommand(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		suggestions := cmd.SuggestionsFor(args[0])
+		if len(suggestions) == 0 {
+			return fmt.Errorf("Unrecognized command `%[1]s %[2]s`\nTry '%[1]s --help' for more information", cmd.CommandPath(), args[0])
+		}
+		return fmt.Errorf("Unrecognized command `%[1]s %[2]s`\n\nDid you mean this?\n\t%[3]s\n\nTry '%[1]s --help' for more information", cmd.CommandPath(), args[0], strings.Join(suggestions, "\n\t"))
+	}
+	return fmt.Errorf("Missing command '%[1]s COMMAND'\nTry '%[1]s --help' for more information", cmd.CommandPath())
 }
 
 // createApp returns a cobra.Command, and the underlying globalOptions object, to be run or tested.
@@ -40,6 +57,7 @@ func createApp() (*cobra.Command, *globalOptions) {
 	rootCommand := &cobra.Command{
 		Use:  "skopeo",
 		Long: "Various operations with container images and container image registries",
+		RunE: requireSubcommand,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			return opts.before(cmd)
 		},
@@ -78,7 +96,7 @@ func createApp() (*cobra.Command, *globalOptions) {
 		logrus.Fatal("unable to mark registries-conf flag as hidden")
 	}
 	rootCommand.PersistentFlags().StringVar(&opts.tmpDir, "tmpdir", "", "directory used to store temporary files")
-	flag := optionalBoolFlag(rootCommand.Flags(), &opts.tlsVerify, "tls-verify", "Require HTTPS and verify certificates when accessing the registry")
+	flag := commonFlag.OptionalBoolFlag(rootCommand.Flags(), &opts.tlsVerify, "tls-verify", "Require HTTPS and verify certificates when accessing the registry")
 	flag.Hidden = true
 	rootCommand.AddCommand(
 		copyCmd(&opts),
@@ -88,6 +106,7 @@ func createApp() (*cobra.Command, *globalOptions) {
 		loginCmd(&opts),
 		logoutCmd(&opts),
 		manifestDigestCmd(),
+		proxyCmd(&opts),
 		syncCmd(&opts),
 		standaloneSignCmd(),
 		standaloneVerifyCmd(),
@@ -102,7 +121,7 @@ func (opts *globalOptions) before(cmd *cobra.Command) error {
 	if opts.debug {
 		logrus.SetLevel(logrus.DebugLevel)
 	}
-	if opts.tlsVerify.present {
+	if opts.tlsVerify.Present() {
 		logrus.Warn("'--tls-verify' is deprecated, please set this on the specific subcommand")
 	}
 	return nil
@@ -159,8 +178,8 @@ func (opts *globalOptions) newSystemContext() *types.SystemContext {
 		DockerRegistryUserAgent:  defaultUserAgent,
 	}
 	// DEPRECATED: We support this for backward compatibility, but override it if a per-image flag is provided.
-	if opts.tlsVerify.present {
-		ctx.DockerInsecureSkipTLSVerify = types.NewOptionalBool(!opts.tlsVerify.value)
+	if opts.tlsVerify.Present() {
+		ctx.DockerInsecureSkipTLSVerify = types.NewOptionalBool(!opts.tlsVerify.Value())
 	}
 	return ctx
 }

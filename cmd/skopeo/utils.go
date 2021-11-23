@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	commonFlag "github.com/containers/common/pkg/flag"
 	"github.com/containers/common/pkg/retry"
 	"github.com/containers/image/v5/manifest"
 	"github.com/containers/image/v5/pkg/compression"
@@ -45,7 +46,7 @@ func commandAction(handler func(args []string, stdout io.Writer) error) func(cmd
 // whether or not the value actually ends up being used.
 // DO NOT ADD ANY NEW USES OF THIS; just call dockerImageFlags with an appropriate, possibly empty, flagPrefix.
 type deprecatedTLSVerifyOption struct {
-	tlsVerify optionalBool // FIXME FIXME: Warn if this is used, or even if it is ignored.
+	tlsVerify commonFlag.OptionalBool // FIXME FIXME: Warn if this is used, or even if it is ignored.
 }
 
 // warnIfUsed warns if tlsVerify was set by the user, and suggests alternatives (which should
@@ -53,7 +54,7 @@ type deprecatedTLSVerifyOption struct {
 // Every user should call this as part of handling the CLI, whether or not the value actually
 // ends up being used.
 func (opts *deprecatedTLSVerifyOption) warnIfUsed(alternatives []string) {
-	if opts.tlsVerify.present {
+	if opts.tlsVerify.Present() {
 		logrus.Warnf("'--tls-verify' is deprecated, instead use: %s", strings.Join(alternatives, ", "))
 	}
 }
@@ -63,7 +64,7 @@ func (opts *deprecatedTLSVerifyOption) warnIfUsed(alternatives []string) {
 func deprecatedTLSVerifyFlags() (pflag.FlagSet, *deprecatedTLSVerifyOption) {
 	opts := deprecatedTLSVerifyOption{}
 	fs := pflag.FlagSet{}
-	flag := optionalBoolFlag(&fs, &opts.tlsVerify, "tls-verify", "require HTTPS and verify certificates when accessing the container registry (defaults to true)")
+	flag := commonFlag.OptionalBoolFlag(&fs, &opts.tlsVerify, "tls-verify", "require HTTPS and verify certificates when accessing the container registry")
 	flag.Hidden = true
 	return fs, &opts
 }
@@ -89,11 +90,13 @@ type dockerImageOptions struct {
 	global              *globalOptions             // May be shared across several imageOptions instances.
 	shared              *sharedImageOptions        // May be shared across several imageOptions instances.
 	deprecatedTLSVerify *deprecatedTLSVerifyOption // May be shared across several imageOptions instances, or nil.
-	authFilePath        optionalString             // Path to a */containers/auth.json (prefixed version to override shared image option).
-	credsOption         optionalString             // username[:password] for accessing a registry
-	registryToken       optionalString             // token to be used directly as a Bearer token when accessing the registry
+	authFilePath        commonFlag.OptionalString  // Path to a */containers/auth.json (prefixed version to override shared image option).
+	credsOption         commonFlag.OptionalString  // username[:password] for accessing a registry
+	userName            commonFlag.OptionalString  // username for accessing a registry
+	password            commonFlag.OptionalString  // password for accessing a registry
+	registryToken       commonFlag.OptionalString  // token to be used directly as a Bearer token when accessing the registry
 	dockerCertPath      string                     // A directory using Docker-like *.{crt,cert,key} files for connecting to a registry or a daemon
-	tlsVerify           optionalBool               // Require HTTPS and verify certificates (for docker: and docker-daemon:)
+	tlsVerify           commonFlag.OptionalBool    // Require HTTPS and verify certificates (for docker: and docker-daemon:)
 	noCreds             bool                       // Access the registry anonymously
 }
 
@@ -119,18 +122,20 @@ func dockerImageFlags(global *globalOptions, shared *sharedImageOptions, depreca
 	fs := pflag.FlagSet{}
 	if flagPrefix != "" {
 		// the non-prefixed flag is handled by a shared flag.
-		fs.Var(newOptionalStringValue(&flags.authFilePath), flagPrefix+"authfile", "path of the authentication file. Default is ${XDG_RUNTIME_DIR}/containers/auth.json")
+		fs.Var(commonFlag.NewOptionalStringValue(&flags.authFilePath), flagPrefix+"authfile", "path of the authentication file. Default is ${XDG_RUNTIME_DIR}/containers/auth.json")
 	}
-	fs.Var(newOptionalStringValue(&flags.credsOption), flagPrefix+"creds", "Use `USERNAME[:PASSWORD]` for accessing the registry")
+	fs.Var(commonFlag.NewOptionalStringValue(&flags.credsOption), flagPrefix+"creds", "Use `USERNAME[:PASSWORD]` for accessing the registry")
+	fs.Var(commonFlag.NewOptionalStringValue(&flags.userName), flagPrefix+"username", "Username for accessing the registry")
+	fs.Var(commonFlag.NewOptionalStringValue(&flags.password), flagPrefix+"password", "Password for accessing the registry")
 	if credsOptionAlias != "" {
 		// This is horribly ugly, but we need to support the old option forms of (skopeo copy) for compatibility.
 		// Don't add any more cases like this.
-		f := fs.VarPF(newOptionalStringValue(&flags.credsOption), credsOptionAlias, "", "Use `USERNAME[:PASSWORD]` for accessing the registry")
+		f := fs.VarPF(commonFlag.NewOptionalStringValue(&flags.credsOption), credsOptionAlias, "", "Use `USERNAME[:PASSWORD]` for accessing the registry")
 		f.Hidden = true
 	}
-	fs.Var(newOptionalStringValue(&flags.registryToken), flagPrefix+"registry-token", "Provide a Bearer token for accessing the registry")
+	fs.Var(commonFlag.NewOptionalStringValue(&flags.registryToken), flagPrefix+"registry-token", "Provide a Bearer token for accessing the registry")
 	fs.StringVar(&flags.dockerCertPath, flagPrefix+"cert-dir", "", "use certificates at `PATH` (*.crt, *.cert, *.key) to connect to the registry or daemon")
-	optionalBoolFlag(&fs, &flags.tlsVerify, flagPrefix+"tls-verify", "require HTTPS and verify certificates when talking to the container registry or daemon (defaults to true)")
+	commonFlag.OptionalBoolFlag(&fs, &flags.tlsVerify, flagPrefix+"tls-verify", "require HTTPS and verify certificates when talking to the container registry or daemon")
 	fs.BoolVar(&flags.noCreds, flagPrefix+"no-creds", false, "Access the registry anonymously")
 	return fs, &flags
 }
@@ -164,31 +169,49 @@ func (opts *imageOptions) newSystemContext() (*types.SystemContext, error) {
 	ctx.AuthFilePath = opts.shared.authFilePath
 	ctx.DockerDaemonHost = opts.dockerDaemonHost
 	ctx.DockerDaemonCertPath = opts.dockerCertPath
-	if opts.dockerImageOptions.authFilePath.present {
-		ctx.AuthFilePath = opts.dockerImageOptions.authFilePath.value
+	if opts.dockerImageOptions.authFilePath.Present() {
+		ctx.AuthFilePath = opts.dockerImageOptions.authFilePath.Value()
 	}
-	if opts.deprecatedTLSVerify != nil && opts.deprecatedTLSVerify.tlsVerify.present {
+	if opts.deprecatedTLSVerify != nil && opts.deprecatedTLSVerify.tlsVerify.Present() {
 		// If both this deprecated option and a non-deprecated option is present, we use the latter value.
-		ctx.DockerInsecureSkipTLSVerify = types.NewOptionalBool(!opts.deprecatedTLSVerify.tlsVerify.value)
+		ctx.DockerInsecureSkipTLSVerify = types.NewOptionalBool(!opts.deprecatedTLSVerify.tlsVerify.Value())
 	}
-	if opts.tlsVerify.present {
-		ctx.DockerDaemonInsecureSkipTLSVerify = !opts.tlsVerify.value
+	if opts.tlsVerify.Present() {
+		ctx.DockerDaemonInsecureSkipTLSVerify = !opts.tlsVerify.Value()
 	}
-	if opts.tlsVerify.present {
-		ctx.DockerInsecureSkipTLSVerify = types.NewOptionalBool(!opts.tlsVerify.value)
+	if opts.tlsVerify.Present() {
+		ctx.DockerInsecureSkipTLSVerify = types.NewOptionalBool(!opts.tlsVerify.Value())
 	}
-	if opts.credsOption.present && opts.noCreds {
+	if opts.credsOption.Present() && opts.noCreds {
 		return nil, errors.New("creds and no-creds cannot be specified at the same time")
 	}
-	if opts.credsOption.present {
+	if opts.userName.Present() && opts.noCreds {
+		return nil, errors.New("username and no-creds cannot be specified at the same time")
+	}
+	if opts.credsOption.Present() && opts.userName.Present() {
+		return nil, errors.New("creds and username cannot be specified at the same time")
+	}
+	// if any of username or password is present, then both are expected to be present
+	if opts.userName.Present() != opts.password.Present() {
+		if opts.userName.Present() {
+			return nil, errors.New("password must be specified when username is specified")
+		}
+		return nil, errors.New("username must be specified when password is specified")
+	}
+	if opts.credsOption.Present() {
 		var err error
-		ctx.DockerAuthConfig, err = getDockerAuth(opts.credsOption.value)
+		ctx.DockerAuthConfig, err = getDockerAuth(opts.credsOption.Value())
 		if err != nil {
 			return nil, err
 		}
+	} else if opts.userName.Present() {
+		ctx.DockerAuthConfig = &types.DockerAuthConfig{
+			Username: opts.userName.Value(),
+			Password: opts.password.Value(),
+		}
 	}
-	if opts.registryToken.present {
-		ctx.DockerBearerRegistryToken = opts.registryToken.value
+	if opts.registryToken.Present() {
+		ctx.DockerBearerRegistryToken = opts.registryToken.Value()
 	}
 	if opts.noCreds {
 		ctx.DockerAuthConfig = &types.DockerAuthConfig{}
@@ -200,11 +223,12 @@ func (opts *imageOptions) newSystemContext() (*types.SystemContext, error) {
 // imageDestOptions is a superset of imageOptions specialized for image destinations.
 type imageDestOptions struct {
 	*imageOptions
-	dirForceCompression         bool        // Compress layers when saving to the dir: transport
-	dirForceDecompression       bool        // Decompress layers when saving to the dir: transport
-	ociAcceptUncompressedLayers bool        // Whether to accept uncompressed layers in the oci: transport
-	compressionFormat           string      // Format to use for the compression
-	compressionLevel            optionalInt // Level to use for the compression
+	dirForceCompression         bool                   // Compress layers when saving to the dir: transport
+	dirForceDecompression       bool                   // Decompress layers when saving to the dir: transport
+	ociAcceptUncompressedLayers bool                   // Whether to accept uncompressed layers in the oci: transport
+	compressionFormat           string                 // Format to use for the compression
+	compressionLevel            commonFlag.OptionalInt // Level to use for the compression
+	precomputeDigests           bool                   // Precompute digests to dedup layers when saving to the docker: transport
 }
 
 // imageDestFlags prepares a collection of CLI flags writing into imageDestOptions, and the managed imageDestOptions structure.
@@ -217,7 +241,8 @@ func imageDestFlags(global *globalOptions, shared *sharedImageOptions, deprecate
 	fs.BoolVar(&opts.dirForceDecompression, flagPrefix+"decompress", false, "Decompress tarball image layers when saving to directory using the 'dir' transport. (default is same compression type as source)")
 	fs.BoolVar(&opts.ociAcceptUncompressedLayers, flagPrefix+"oci-accept-uncompressed-layers", false, "Allow uncompressed image layers when saving to an OCI image using the 'oci' transport. (default is to compress things that aren't compressed)")
 	fs.StringVar(&opts.compressionFormat, flagPrefix+"compress-format", "", "`FORMAT` to use for the compression")
-	fs.Var(newOptionalIntValue(&opts.compressionLevel), flagPrefix+"compress-level", "`LEVEL` to use for the compression")
+	fs.Var(commonFlag.NewOptionalIntValue(&opts.compressionLevel), flagPrefix+"compress-level", "`LEVEL` to use for the compression")
+	fs.BoolVar(&opts.precomputeDigests, flagPrefix+"precompute-digests", false, "Precompute digests to prevent uploading layers already on the registry using the 'docker' transport.")
 	return fs, &opts
 }
 
@@ -239,9 +264,11 @@ func (opts *imageDestOptions) newSystemContext() (*types.SystemContext, error) {
 		}
 		ctx.CompressionFormat = &cf
 	}
-	if opts.compressionLevel.present {
-		ctx.CompressionLevel = &opts.compressionLevel.value
+	if opts.compressionLevel.Present() {
+		value := opts.compressionLevel.Value()
+		ctx.CompressionLevel = &value
 	}
+	ctx.DockerRegistryPushPrecomputeDigests = opts.precomputeDigests
 	return ctx, err
 }
 
